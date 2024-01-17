@@ -6,9 +6,48 @@ import scala.collection.mutable.ListBuffer
 import scala.collection.{Iterable, Map, Seq, Set, mutable}
 import scala.collection.immutable
 import scala.scalajs.js
-import scala.scalajs.js.JSON
+import scala.scalajs.js.{Date, JSON}
+
+class DateConverter extends JsonDateConverter:
+  override def format(date: Date, pattern: String): String =
+    val (year, month, day) = (date.getFullYear(), date.getMonth(), date.getDay())
+    s"${year}/${month}/${day}"
+
+  override def parse(date: String, pattern: String): Date =
+    val sp = date.split("/")
+    val (year, month, day) = (sp(0).toInt, sp(1).toInt, sp(2).toInt)
+    new Date(year, month, day)
 
 class JsonTests:
+
+  @Test
+  def jsonAnnotWithIgnoreTest: Unit =
+    case class Simple(@Json("f") a: Int, @Json(ignore = true) b: String) derives NativeConverter
+    val fromNative = summon[NativeConverter[Simple]].fromNative(JSON.parse(""" {"f":123}  """))
+    assertEquals(123, fromNative.a)
+
+  @Test
+  def jsonAnnotWithCoerceTest: Unit =
+    case class Simple(@Json("f", typ = JsonType.JsonIntStr) a: Int) derives NativeConverter
+    assertEquals(""" {"f":"123"} """.trim, Simple(123).toJson)
+    val fromNative = summon[NativeConverter[Simple]].fromNative(JSON.parse(""" {"f":"123"}  """))
+    assertEquals(123, fromNative.a)
+
+  @Test
+
+  @Test
+  def jsonAnnotWithDateConverterTest: Unit =
+
+    given JsonDateConverter = new DateConverter()
+
+    case class Simple(@Json(typ = JsonType.JsonDate("YYYY-MM-DD")) d: js.Date) derives NativeConverter
+    val date = new js.Date()
+    val (year, month, day) = (date.getFullYear(), date.getMonth(), date.getDay())
+    assertEquals(s""" {"d":"${year}/${month}/${day}"} """.trim, Simple(date).toJson)
+    val fromNative = summon[NativeConverter[Simple]].fromNative(JSON.parse(s""" {"d":"${year}/${month}/${day}"}  """))
+    assertTrue(date.getFullYear() == fromNative.d.getFullYear())
+    assertTrue(date.getMonth() == fromNative.d.getMonth())
+    assertTrue(date.getDay() == fromNative.d.getDay())
 
   @Test
   def jsonSummonTest: Unit =

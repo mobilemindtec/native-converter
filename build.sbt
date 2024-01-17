@@ -9,7 +9,7 @@ lazy val root = crossProject(JVMPlatform, JSPlatform)
     name := "native-converter",
     version := "0.9.1-SNAPSHOT",
     versionScheme := Some("early-semver"),
-    scalaVersion := "3.3.0",
+    scalaVersion := "3.3.1",
 
     // publishing settings
     homepage := Some(url("https://github.com/getshaka-org/native-converter")),
@@ -44,6 +44,6 @@ lazy val root = crossProject(JVMPlatform, JSPlatform)
   )
   .jvmSettings(
     libraryDependencies ++= Seq(
-      "com.novocode" % "junit-interface" % "0.11" % "test"
+      "com.github.sbt" % "junit-interface" % "0.13.3" % "test"
     )
   )

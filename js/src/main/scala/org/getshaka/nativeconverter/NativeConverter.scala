@@ -535,7 +535,7 @@ object NativeConverter:
         new NativeConverter[A]:
           extension (a: A)
             def toNative: js.Any =
-              productToNative[Mets, Mels](a.asInstanceOf[Product])
+              productToNative[A, Mets, Mels](a.asInstanceOf[Product])
           def fromNative(ps: ParseState): A =
             val jsDict = asJSDict(ps)
             val resArr = Array.ofDim[Any](constValue[Tuple.Size[Mets]])
@@ -543,26 +543,40 @@ object NativeConverter:
 
       case s: Mirror.SumOf[A] => adtSumConverter[A](s)
 
-  private inline def productToNative[Mets, Mels](
+  private inline def productToNative[A, Mets, Mels](
       p: Product,
       i: Int = 0,
       res: js.Dynamic = js.Object().asInstanceOf[js.Dynamic]
   ): js.Any =
+
+    val fields = getAnnotations[A]
+
     inline (erasedValue[Mets], erasedValue[Mels]) match
       // base case
       case _: (EmptyTuple, EmptyTuple) => res
 
       case _: (ImplicitlyJsAny *: metsTail, mel *: melsTail) =>
-        res.updateDynamic(constValue[mel & String])(
-          p.productElement(i).asInstanceOf[js.Any]
-        )
-        productToNative[metsTail, melsTail](p, i + 1, res)
+
+        val fieldName = constValue[mel & String]
+
+        fields.findJsonName(fieldName).foreach { k =>
+          val v = fields.toNative(fieldName, p.productElement(i))
+          res.updateDynamic(k)(v)
+        }
+
+        productToNative[A, metsTail, melsTail](p, i + 1, res)
 
       case _: (met *: metsTail, mel *: melsTail) =>
+        val fieldName = constValue[mel & String]
         val nc = summonInline[NativeConverter[met]]
         val nativeElem = nc.toNative(p.productElement(i).asInstanceOf[met])
-        res.updateDynamic(constValue[mel & String])(nativeElem)
-        productToNative[metsTail, melsTail](p, i + 1, res)
+
+        fields.findJsonName(fieldName).foreach { k =>
+          val v = fields.toNative(fieldName, nativeElem)
+          res.updateDynamic(k)(v)
+        }
+
+        productToNative[A, metsTail, melsTail](p, i + 1, res)
 
   private inline def nativeToProduct[A, Mets, Mels](
       mirror: Mirror.ProductOf[A],
@@ -571,6 +585,9 @@ object NativeConverter:
       jsDict: js.Dictionary[js.Any],
       i: Int = 0
   ): A =
+
+    val fields = getAnnotations[A]
+
     inline (erasedValue[Mets], erasedValue[Mels]) match
       case _: (EmptyTuple, EmptyTuple) =>
         mirror.fromProduct(ArrayProduct(resArr))
@@ -578,9 +595,13 @@ object NativeConverter:
       case _: (met *: metsTail, mel *: melsTail) =>
         val nc = summonInline[NativeConverter[met]]
         val key = constValue[mel & String]
-        val elementJs = jsDict.getOrElse(key, null)
 
-        resArr(i) = nc.fromNative(ps.atKey(key, elementJs))
+        fields.findJsonName(key).foreach { k =>
+          val elementJs = jsDict.getOrElse(k, null)
+          val v = fields.fromNative(key, ps.atKey(k, elementJs).json)
+          resArr(i) = nc.fromNative(v)
+        }
+
         nativeToProduct[A, metsTail, melsTail](mirror, resArr, ps, jsDict, i + 1)
 
   private inline def adtSumConverter[A](
